@@ -4,14 +4,11 @@ import java.io.*;
 import java.net.*;
 
 /**
- * ChatClient — Week 1 (CLI version)
+ * ChatClient — Week 4 Update (CLI version with Auto-Reconnect)
  *
  * Two threads keep things non-blocking:
- *   • Main thread  → reads keyboard input and sends to server
- *   • Listener thread → reads messages from server and prints them
- *
- * In Week 2 you'll replace the keyboard/print parts with a Swing GUI,
- * but the socket logic stays exactly the same.
+ * • Main thread  → reads keyboard input and sends to server
+ * • Listener thread → reads messages from server and prints them
  */
 public class ChatClient {
 
@@ -20,55 +17,96 @@ public class ChatClient {
 
     private Socket socket;
     private BufferedReader serverReader;
-    private PrintWriter serverWriter;
+    private volatile PrintWriter serverWriter; // volatile ensures the main thread instantly sees updates on reconnect
     private volatile boolean running = true;
+    private boolean isReconnecting = false;
 
     public void connect() {
         System.out.println("Connecting to QuickChat server at " + HOST + ":" + PORT + "...");
 
         try {
-            socket = new Socket(HOST, PORT);
-            serverReader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-            serverWriter = new PrintWriter(new OutputStreamWriter(socket.getOutputStream()), true);
-
+            establishConnection();
             System.out.println("Connected!\n");
-
-            // ── Listener thread: server → console ──────────────────────────────
-            Thread listenerThread = new Thread(this::listenFromServer);
-            listenerThread.setDaemon(true);
-            listenerThread.setName("ServerListener");
-            listenerThread.start();
 
             // ── Main thread: keyboard → server ─────────────────────────────────
             readFromKeyboard();
 
-        } catch (ConnectException e) {
-            System.err.println("Could not connect — is the server running on port " + PORT + "?");
         } catch (IOException e) {
-            System.err.println("Connection error: " + e.getMessage());
+            System.err.println("Could not establish initial connection: " + e.getMessage());
         } finally {
             cleanup();
         }
     }
 
+    private void establishConnection() throws IOException {
+        socket = new Socket(HOST, PORT);
+        serverReader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+        serverWriter = new PrintWriter(new OutputStreamWriter(socket.getOutputStream()), true);
+
+        // ── Listener thread: server → console ──────────────────────────────
+        Thread listenerThread = new Thread(this::listenFromServer);
+        listenerThread.setDaemon(true);
+        listenerThread.setName("ServerListener");
+        listenerThread.start();
+    }
+
     // ── Runs on listener thread ─────────────────────────────────────────────────
     private void listenFromServer() {
         try {
-            String message;
-            while (running && (message = serverReader.readLine()) != null) {
-                // SYSTEM: prefix = server notification, strip it and style differently
-                if (message.startsWith("SYSTEM:")) {
-                    System.out.println("  >>> " + message.substring(7));
+            String line;
+            while (running && (line = serverReader.readLine()) != null) {
+                if (line.startsWith("SYSTEM:")) {
+                    System.out.println("  >>> " + line.substring(7));
                 } else {
-                    System.out.println(message);
+                    System.out.println(line);
                 }
             }
         } catch (IOException e) {
-            if (running) {
-                System.out.println("\nDisconnected from server.");
+            if (running && !isReconnecting) {
+                System.out.println("\n[SYSTEM] Lost connection to server. Attempting to reconnect...");
+                handleReconnect();
             }
         }
-        running = false;
+    }
+
+    // ── Reconnection Loop with Exponential Backoff ─────────────────────────────
+    private void handleReconnect() {
+        isReconnecting = true;
+        
+        Thread reconnectThread = new Thread(() -> {
+            int delay = 1000; // Start at 1 second
+            int maxDelay = 16000; // Cap at 16 seconds
+
+            while (running) {
+                try {
+                  
+                    // Close old streams cleanly
+                    if (serverReader != null) try { serverReader.close(); } catch (IOException ignored) {}
+                    if (serverWriter != null) serverWriter.close(); // No try-catch needed for PrintWriter!
+                    if (socket != null) try { socket.close(); } catch (IOException ignored) {}
+
+                    System.out.println("[SYSTEM] Retrying connection...");
+                    establishConnection();
+                    
+                    System.out.println("[SYSTEM] Reconnected successfully! You may resume typing.");
+                    isReconnecting = false;
+                    break; // Successfully connected, break out of retry loop
+
+                } catch (IOException e) {
+                    System.out.println("[SYSTEM] Connection failed. Retrying in " + (delay / 1000) + " seconds...");
+                    try {
+                        Thread.sleep(delay);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                    delay = Math.min(delay * 2, maxDelay); // Double the backoff delay
+                }
+            }
+        });
+        
+        reconnectThread.setName("CliReconnectWorker");
+        reconnectThread.start();
     }
 
     // ── Runs on main thread ─────────────────────────────────────────────────────
@@ -78,11 +116,20 @@ public class ChatClient {
             String input;
             while (running && (input = keyboard.readLine()) != null) {
                 if (input.equalsIgnoreCase("/quit")) {
-                    serverWriter.println("/quit");
+                    if (serverWriter != null) serverWriter.println("/quit");
                     running = false;
                     break;
                 }
-                serverWriter.println(input);
+                
+                // If we are currently reconnecting, block inputs or warn user
+                if (isReconnecting) {
+                    System.out.println("  [!] Cannot send message. Still offline...");
+                    continue;
+                }
+
+                if (serverWriter != null) {
+                    serverWriter.println(input);
+                }
             }
         } catch (IOException e) {
             System.err.println("Keyboard read error: " + e.getMessage());

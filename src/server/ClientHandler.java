@@ -4,14 +4,10 @@ import java.io.*;
 import java.net.*;
 
 /**
- * ClientHandler — Week 1
+ * ClientHandler — Week 4 update (Rooms / Channels integration)
  *
  * Each connected client gets one of these running on its own thread.
- * Responsibilities:
- *   1. Ask the client for a username
- *   2. Read incoming messages in a loop
- *   3. Route messages (broadcast or private via /msg)
- *   4. Handle disconnect cleanly
+ * Tracks user state regarding room boundaries and intercepts channel commands.
  */
 public class ClientHandler implements Runnable {
 
@@ -21,6 +17,9 @@ public class ClientHandler implements Runnable {
     private BufferedReader reader;
     private PrintWriter writer;
     private String username;
+    
+    // ── NEW: Room Tracking State ──────────────────────────────────────────────
+    private String currentRoom = "#general";
 
     public ClientHandler(Socket socket, ChatServer server) {
         this.socket = socket;
@@ -48,7 +47,11 @@ public class ClientHandler implements Runnable {
                 if (server.registerClient(name, this)) {
                     username = name;
                     writer.println("SYSTEM:Username accepted. You are now connected as " + username);
-                    writer.println("SYSTEM:Commands: /users  /msg <user> <text>  /quit");
+                    writer.println("SYSTEM:Commands: /join <room>  /users  /msg <user> <text>  /quit");
+                    
+                    // Auto-join default room (#general) on connection
+                    server.joinRoom(currentRoom, this);
+                    server.broadcastToRoom(currentRoom, username + " joined the chat!", "SYSTEM");
                     break;
                 } else {
                     writer.println("SYSTEM:Username '" + name + "' is already taken. Try another:");
@@ -68,12 +71,15 @@ public class ClientHandler implements Runnable {
                     sendMessage("SYSTEM:" + server.getOnlineUsers());
 
                 } else if (line.startsWith("/msg ")) {
-                    // Format: /msg <username> <message>
                     handlePrivateMessage(line);
 
+                } else if (line.startsWith("/join ")) {
+                    // Handle changing rooms/channels
+                    handleJoinRoom(line);
+
                 } else {
-                    // Regular broadcast
-                    server.broadcast(line, username);
+                    // Regular message: Route to room instead of global broadcast
+                    server.broadcastToRoom(currentRoom, line, username);
                 }
             }
 
@@ -85,7 +91,6 @@ public class ClientHandler implements Runnable {
     }
 
     private void handlePrivateMessage(String line) {
-        // /msg username rest of message
         String[] parts = line.split(" ", 3);
         if (parts.length < 3) {
             sendMessage("SYSTEM:Usage: /msg <username> <message>");
@@ -105,6 +110,38 @@ public class ClientHandler implements Runnable {
         }
     }
 
+    // ── NEW: Room Switching Handler ──────────────────────────────────────────
+    private void handleJoinRoom(String line) {
+        String newRoom = line.substring(6).trim();
+        if (newRoom.isEmpty()) {
+            sendMessage("SYSTEM:Usage: /join <room_name>");
+            return;
+        }
+        
+        // Enforce '#' channel notation prefix
+        if (!newRoom.startsWith("#")) {
+            newRoom = "#" + newRoom;
+        }
+
+        if (newRoom.equals(currentRoom)) {
+            sendMessage("SYSTEM:You are already in " + currentRoom);
+            return;
+        }
+
+        // 1. Leave the old room
+        server.leaveRoom(currentRoom, this);
+        server.broadcastToRoom(currentRoom, username + " left the room.", "SYSTEM");
+
+        // 2. Switch context and join the new room
+        String oldRoom = currentRoom;
+        currentRoom = newRoom;
+        server.joinRoom(currentRoom, this);
+        
+        // 3. Notify remaining occupants and confirm to sender
+        server.broadcastToRoom(currentRoom, username + " joined the room.", "SYSTEM");
+        sendMessage("SYSTEM:You successfully switched from " + oldRoom + " to " + currentRoom);
+    }
+
     // ── Thread-safe send to THIS client ────────────────────────────────────────
     public void sendMessage(String message) {
         if (writer != null) {
@@ -119,7 +156,10 @@ public class ClientHandler implements Runnable {
 
     private void cleanup() {
         try {
-            if (username != null) server.removeClient(username);
+            if (username != null) {
+                server.removeClient(username);
+                server.leaveRoom(currentRoom, this); // Ensure client unbinds from room arrays
+            }
             if (reader != null) reader.close();
             if (writer != null) writer.close();
             if (socket != null && !socket.isClosed()) socket.close();

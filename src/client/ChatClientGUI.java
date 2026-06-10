@@ -8,18 +8,7 @@ import java.io.*;
 import java.net.*;
 
 /**
- * ChatClientGUI — Week 2
- *
- * Replaces the CLI with a real Swing window.
- * The socket/thread logic is identical to Week 1 — only the UI changed.
- *
- * Layout:
- *   ┌─────────────────────────────┬──────────────┐
- *   │  chat area (JTextPane)      │ online users │
- *   │                             │ (JList)      │
- *   ├─────────────────────────────┴──────────────┤
- *   │  input field            [Send]             │
- *   └────────────────────────────────────────────┘
+ * ChatClientGUI — Week 4 (File Transfer Update)
  */
 public class ChatClientGUI extends JFrame {
 
@@ -108,7 +97,6 @@ public class ChatClientGUI extends JFrame {
         inputField.addActionListener(e -> sendMessage());
         inputField.setToolTipText("Type a message · /msg <user> for DM · Tab to autocomplete username");
 
-        // Tab key: autocomplete username after /msg
         inputField.addKeyListener(new java.awt.event.KeyAdapter() {
             public void keyPressed(java.awt.event.KeyEvent e) {
                 if (e.getKeyCode() == java.awt.event.KeyEvent.VK_TAB) {
@@ -127,7 +115,15 @@ public class ChatClientGUI extends JFrame {
         sendButton.setEnabled(false);
         sendButton.addActionListener(e -> sendMessage());
 
+        // File Attachment Button
+        JButton fileButton = new JButton("📎");
+        fileButton.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+        fileButton.setFocusPainted(false);
+        fileButton.setBorder(BorderFactory.createEmptyBorder(8, 12, 8, 12));
+        fileButton.addActionListener(e -> initiateFileTransfer());
+
         JPanel inputPanel = new JPanel(new BorderLayout());
+        inputPanel.add(fileButton, BorderLayout.WEST);
         inputPanel.add(inputField, BorderLayout.CENTER);
         inputPanel.add(sendButton, BorderLayout.EAST);
 
@@ -152,6 +148,67 @@ public class ChatClientGUI extends JFrame {
         add(bottomPanel, BorderLayout.SOUTH);
     }
 
+    // ── File Transfer Logic (Control Plane) ────────────────────────────────────
+    private void initiateFileTransfer() {
+        JFileChooser fileChooser = new JFileChooser();
+        if (fileChooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+            File fileToSend = fileChooser.getSelectedFile();
+            
+            String targetUser = JOptionPane.showInputDialog(this, "Send file to which user?");
+            if (targetUser != null && !targetUser.isBlank()) {
+                new Thread(() -> hostFileAndNotify(fileToSend, targetUser)).start();
+            }
+        }
+    }
+
+    private void hostFileAndNotify(File file, String targetUser) {
+        try (ServerSocket fileServer = new ServerSocket(0)) { 
+            int port = fileServer.getLocalPort();
+            
+            // Notify target via main server
+            serverWriter.println("/msg " + targetUser + " [SYSTEM_FILE_OFFER] " + file.getName() + " " + port);
+            SwingUtilities.invokeLater(() -> appendSystem("Waiting for " + targetUser + " to accept " + file.getName() + "..."));
+
+            // Wait for target to connect and stream bytes
+            try (Socket targetSocket = fileServer.accept();
+                 FileInputStream fis = new FileInputStream(file);
+                 OutputStream os = targetSocket.getOutputStream()) {
+                 
+                byte[] buffer = new byte[4096];
+                int bytesRead;
+                while ((bytesRead = fis.read(buffer)) != -1) {
+                    os.write(buffer, 0, bytesRead);
+                }
+                SwingUtilities.invokeLater(() -> appendSystem("File " + file.getName() + " sent successfully!"));
+            }
+        } catch (IOException ex) {
+            SwingUtilities.invokeLater(() -> appendSystem("File transfer failed: " + ex.getMessage()));
+        }
+    }
+
+    private void downloadFile(String filename, int port) {
+        SwingUtilities.invokeLater(() -> appendSystem("Receiving file: " + filename + "..."));
+        
+        File outDir = new File("downloads");
+        outDir.mkdir(); 
+        File outFile = new File(outDir, filename);
+
+        try (Socket downloadSocket = new Socket(HOST, port);
+             InputStream is = downloadSocket.getInputStream();
+             FileOutputStream fos = new FileOutputStream(outFile)) {
+
+            byte[] buffer = new byte[4096];
+            int bytesRead;
+            while ((bytesRead = is.read(buffer)) != -1) {
+                fos.write(buffer, 0, bytesRead);
+            }
+            SwingUtilities.invokeLater(() -> appendSystem("Downloaded " + filename + " to the downloads folder!"));
+
+        } catch (IOException e) {
+            SwingUtilities.invokeLater(() -> appendSystem("Failed to download file: " + e.getMessage()));
+        }
+    }
+
     // ── Username dialog ────────────────────────────────────────────────────────
     private void askForUsername() {
         String name = JOptionPane.showInputDialog(
@@ -174,13 +231,11 @@ public class ChatClientGUI extends JFrame {
 
             statusLabel.setText("  Connected to " + HOST + ":" + PORT);
 
-            // Start background listener thread
             Thread listener = new Thread(this::listenFromServer);
             listener.setDaemon(true);
             listener.setName("ServerListener");
             listener.start();
 
-            // Enable input
             inputField.setEnabled(true);
             sendButton.setEnabled(true);
             inputField.requestFocus();
@@ -195,7 +250,7 @@ public class ChatClientGUI extends JFrame {
         }
     }
 
-    // ── Listener thread — reads from server, updates UI on EDT ────────────────
+    // ── Listener thread ────────────────────────────────────────────────────────
     private void listenFromServer() {
         try {
             String line;
@@ -210,41 +265,41 @@ public class ChatClientGUI extends JFrame {
         }
     }
 
-    // ── Route incoming message to the right display style ─────────────────────
+    // ── Route incoming message ─────────────────────────────────────────────────
     private void processIncoming(String msg) {
+        // Intercept file offers
+        if (msg.contains("[SYSTEM_FILE_OFFER]")) {
+            String[] parts = msg.split(" ");
+            String filename = parts[parts.length - 2];
+            int port = Integer.parseInt(parts[parts.length - 1]);
+            
+            new Thread(() -> downloadFile(filename, port)).start();
+            return;
+        }
+
         if (msg.startsWith("SYSTEM:")) {
             String content = msg.substring(7);
-
-            // Parse online users out of /users response
             if (content.startsWith("Online (")) {
                 updateUserList(content);
-            }
-            // Parse join/leave to keep user list updated
-            else if (content.contains("joined the chat")) {
+            } else if (content.contains("joined the chat")) {
                 String user = content.split(" ")[0];
                 if (!userListModel.contains(user)) userListModel.addElement(user);
                 appendSystem(content);
-            }
-            else if (content.contains("left the chat")) {
+            } else if (content.contains("left the chat")) {
                 String user = content.split(" ")[0];
                 userListModel.removeElement(user);
                 appendSystem(content);
-            }
-            else {
+            } else {
                 appendSystem(content);
             }
-        }
-        else if (msg.contains("[DM")) {
+        } else if (msg.contains("[DM")) {
             appendDM(msg);
-        }
-        else {
-            // Regular message: extract username and message for color styling
+        } else {
             appendChat(msg);
         }
     }
 
     private void updateUserList(String content) {
-        // "Online (2): Alice, Bob"
         userListModel.clear();
         if (content.contains(": ")) {
             String[] users = content.split(": ")[1].split(", ");
@@ -256,11 +311,9 @@ public class ChatClientGUI extends JFrame {
         }
     }
 
-    // ── Append styled text to chat pane ───────────────────────────────────────
+    // ── Text Formatting ────────────────────────────────────────────────────────
     private void appendChat(String line) {
-        // line format: "[HH:MM] username: message"
         try {
-            // Extract parts
             String timeStr = "";
             String rest = line;
             if (line.startsWith("[")) {
@@ -317,15 +370,13 @@ public class ChatClientGUI extends JFrame {
         chatPane.setCaretPosition(doc.getLength());
     }
 
-    // ── Tab autocomplete: /msg Bo → /msg Bob ──────────────────────────────────
     private void autocompleteUsername() {
         String text = inputField.getText();
         if (!text.startsWith("/msg ")) return;
 
-        String partial = text.substring(5); // text after "/msg "
-        if (partial.contains(" ")) return;  // already has a full username + space
+        String partial = text.substring(5);
+        if (partial.contains(" ")) return;
 
-        // Find matching usernames from the sidebar list
         java.util.List<String> matches = new java.util.ArrayList<>();
         for (int i = 0; i < userListModel.size(); i++) {
             String entry = userListModel.get(i).replace(" (you)", "");
@@ -335,27 +386,20 @@ public class ChatClientGUI extends JFrame {
         }
 
         if (matches.size() == 1) {
-            // Exact single match — complete it and add a space ready for the message
             inputField.setText("/msg " + matches.get(0) + " ");
             inputField.setCaretPosition(inputField.getText().length());
         } else if (matches.size() > 1) {
-            // Multiple matches — show them as a system hint
             appendSystem("Tab options: " + String.join(", ", matches));
         }
     }
 
-    // ── Send message ───────────────────────────────────────────────────────────
     private void sendMessage() {
         String text = inputField.getText().trim();
         if (text.isEmpty() || serverWriter == null) return;
         serverWriter.println(text);
         inputField.setText("");
-
-        // /users → ask server, it will reply with SYSTEM: Online (...)
-        // Everything else is handled server-side and echoed back
     }
 
-    // ── Clean disconnect ───────────────────────────────────────────────────────
     private void disconnect() {
         running = false;
         if (serverWriter != null) serverWriter.println("/quit");
@@ -365,9 +409,7 @@ public class ChatClientGUI extends JFrame {
         System.exit(0);
     }
 
-    // ── Entry point ────────────────────────────────────────────────────────────
     public static void main(String[] args) {
-        // Always update Swing components on the Event Dispatch Thread
         SwingUtilities.invokeLater(() -> {
             ChatClientGUI gui = new ChatClientGUI();
             gui.setVisible(true);

@@ -6,14 +6,18 @@ import java.util.*;
 import java.util.concurrent.*;
 
 /**
- * ChatServer — Week 3 update
- * Added: ChatLogger integration + admin command loop (/kick /list /broadcast)
+ * ChatServer — Week 4 update (Rooms / Channels added)
+ * Added: ConcurrentHashMap for rooms and routing logic.
  */
 public class ChatServer {
 
     private static final int PORT = 5000;
 
     private final ConcurrentHashMap<String, ClientHandler> clients = new ConcurrentHashMap<>();
+    
+    // ── NEW: Room Tracking ─────────────────────────────────────────────────────
+    private final ConcurrentHashMap<String, Set<ClientHandler>> rooms = new ConcurrentHashMap<>();
+    
     private final ChatLogger logger = new ChatLogger(); // Week 3
 
     public void start() {
@@ -87,11 +91,44 @@ public class ChatServer {
         }
     }
 
-    // ── Broadcast ──────────────────────────────────────────────────────────────
+    // ── NEW: Room Methods ──────────────────────────────────────────────────────
+    private Set<ClientHandler> getRoom(String roomName) {
+        return rooms.computeIfAbsent(roomName, k -> ConcurrentHashMap.newKeySet());
+    }
+
+    public void joinRoom(String roomName, ClientHandler handler) {
+        getRoom(roomName).add(handler);
+    }
+
+    public void leaveRoom(String roomName, ClientHandler handler) {
+        Set<ClientHandler> room = rooms.get(roomName);
+        if (room != null) {
+            room.remove(handler);
+            // Cleanup memory if room becomes empty
+            if (room.isEmpty()) rooms.remove(roomName); 
+        }
+    }
+
+    public void broadcastToRoom(String roomName, String message, String senderUsername) {
+        Set<ClientHandler> room = rooms.get(roomName);
+        if (room != null) {
+            String formatted = "[" + timestamp() + "] [" + roomName + "] " + senderUsername + ": " + message;
+            System.out.println(formatted);
+            
+            // Log the message with the room tag
+            logger.logMessage(senderUsername, "[" + roomName + "] " + message); 
+            
+            for (ClientHandler client : room) {
+                client.sendMessage(formatted);
+            }
+        }
+    }
+
+    // ── Global Broadcast (Legacy) ──────────────────────────────────────────────
     public void broadcast(String message, String senderUsername) {
         String formatted = "[" + timestamp() + "] " + senderUsername + ": " + message;
         System.out.println(formatted);
-        logger.logMessage(senderUsername, message); // Week 3: log it
+        logger.logMessage(senderUsername, message); 
         for (ClientHandler handler : clients.values()) {
             handler.sendMessage(formatted);
         }
@@ -110,7 +147,7 @@ public class ChatServer {
             sender.sendMessage("[" + timestamp() + "] [DM to " + targetUsername + "]: " + message);
         }
 
-        logger.logDM(senderUsername, targetUsername, message); // Week 3: log DMs too
+        logger.logDM(senderUsername, targetUsername, message);
         return true;
     }
 
@@ -118,7 +155,7 @@ public class ChatServer {
     public boolean registerClient(String username, ClientHandler handler) {
         if (clients.containsKey(username)) return false;
         clients.put(username, handler);
-        String event = username + " joined the chat! (" + clients.size() + " online)";
+        String event = username + " joined the server! (" + clients.size() + " online)";
         broadcastSystemMessage(event);
         logger.logSystem(event);
         return true;
@@ -126,7 +163,7 @@ public class ChatServer {
 
     public void removeClient(String username) {
         clients.remove(username);
-        String event = username + " left the chat. (" + clients.size() + " online)";
+        String event = username + " left the server. (" + clients.size() + " online)";
         broadcastSystemMessage(event);
         logger.logSystem(event);
     }
@@ -144,7 +181,6 @@ public class ChatServer {
         }
     }
 
-    // Expose clients map so ClientHandler can offer Tab-autocomplete usernames
     public Set<String> getOnlineUsernames() {
         return clients.keySet();
     }
