@@ -116,3 +116,4 @@ Right now this only works on localhost or a local network. To let friends connec
 | Week 1 | TCP server + CLI client, multithreading, broadcast, private messages |
 | Week 2 | Swing GUI client with styled chat pane and online users sidebar |
 | Week 3 | Chat logger with daily rotation, Tab autocomplete, server admin commands |
+| Week 4 (Current) | P2P data-plane file transfer, isolated channel routing, and exponential backoff auto-reconnect loops |
