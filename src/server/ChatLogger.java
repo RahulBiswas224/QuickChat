@@ -17,6 +17,7 @@ import java.time.format.*;
  *   - Automatic daily file rotation via LocalDate in filename
  *   - synchronized to stay thread-safe (multiple ClientHandler threads call log())
  */
+
 public class ChatLogger {
 
     private static final String LOG_DIR = "logs";
@@ -37,7 +38,7 @@ public class ChatLogger {
         }
     }
 
-    // ── Called by ChatServer for every broadcast and system event ──────────────
+    //Called by ChatServer for every broadcast and system event ──────────────
     public synchronized void log(String type, String username, String message) {
         try {
             rotatIfNeeded(); // New day → new file
@@ -71,7 +72,7 @@ public class ChatLogger {
         log("DM", from + " -> " + to, message);
     }
 
-    // ── Opens (or reopens) today's log file ────────────────────────────────────
+    //Opens (or reopens) today's log file ────────────────────────────────────
     private void openTodaysFile() throws IOException {
         if (writer != null) {
             try { writer.close(); } catch (IOException ignored) {}
@@ -86,7 +87,7 @@ public class ChatLogger {
         System.out.println("[LOGGER] Logging to: " + filename);
     }
 
-    // ── Auto-rotate when day changes ───────────────────────────────────────────
+    //Auto-rotate when day changes ───────────────────────────────────────────
     private void rotatIfNeeded() throws IOException {
         String today = LocalDate.now().format(DATE_FMT);
         if (!today.equals(currentDate)) {

@@ -9,6 +9,7 @@ import java.net.*;
  * Each connected client gets one of these running on its own thread.
  * Tracks user state regarding room boundaries and intercepts channel commands.
  */
+
 public class ClientHandler implements Runnable {
 
     private final Socket socket;
@@ -18,7 +19,7 @@ public class ClientHandler implements Runnable {
     private PrintWriter writer;
     private String username;
     
-    // ── NEW: Room Tracking State ──────────────────────────────────────────────
+    //NEW: Room Tracking State ──────────────────────────────────────────────
     private String currentRoom = "#general";
 
     public ClientHandler(Socket socket, ChatServer server) {
@@ -33,7 +34,7 @@ public class ClientHandler implements Runnable {
             reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
             writer = new PrintWriter(new OutputStreamWriter(socket.getOutputStream()), true);
 
-            // ── Step 1: username handshake ──────────────────────────────────────
+            //Step 1: username handshake ──────────────────────────────────────
             writer.println("SYSTEM:Welcome to QuickChat! Enter your username:");
 
             while (true) {
@@ -58,7 +59,7 @@ public class ClientHandler implements Runnable {
                 }
             }
 
-            // ── Step 2: main message loop ───────────────────────────────────────
+            //Step 2: main message loop ───────────────────────────────────────
             String line;
             while ((line = reader.readLine()) != null) {
                 line = line.trim();
@@ -110,7 +111,7 @@ public class ClientHandler implements Runnable {
         }
     }
 
-    // ── NEW: Room Switching Handler ──────────────────────────────────────────
+    //NEW: Room Switching Handler ──────────────────────────────────────────
     private void handleJoinRoom(String line) {
         String newRoom = line.substring(6).trim();
         if (newRoom.isEmpty()) {
@@ -142,14 +143,14 @@ public class ClientHandler implements Runnable {
         sendMessage("SYSTEM:You successfully switched from " + oldRoom + " to " + currentRoom);
     }
 
-    // ── Thread-safe send to THIS client ────────────────────────────────────────
+    //Thread-safe send to THIS client ────────────────────────────────────────
     public void sendMessage(String message) {
         if (writer != null) {
             writer.println(message);
         }
     }
 
-    // ── Called by admin /kick command ──────────────────────────────────────────
+    //Called by admin /kick command ──────────────────────────────────────────
     public void forceDisconnect() {
         cleanup();
     }

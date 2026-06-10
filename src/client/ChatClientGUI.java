@@ -10,9 +10,10 @@ import java.net.*;
 /**
  * ChatClientGUI — Week 4 (File Transfer Update)
  */
+
 public class ChatClientGUI extends JFrame {
 
-    // ── Network ────────────────────────────────────────────────────────────────
+    //Network ────────────────────────────────────────────────────────────────
     private static final String HOST = "localhost";
     private static final int PORT = 5000;
 
@@ -21,7 +22,7 @@ public class ChatClientGUI extends JFrame {
     private PrintWriter serverWriter;
     private volatile boolean running = true;
 
-    // ── UI components ──────────────────────────────────────────────────────────
+    //UI components ──────────────────────────────────────────────────────────
     private JTextPane chatPane;
     private StyledDocument doc;
     private JTextField inputField;
@@ -29,7 +30,7 @@ public class ChatClientGUI extends JFrame {
     private DefaultListModel<String> userListModel;
     private JLabel statusLabel;
 
-    // ── Colours ────────────────────────────────────────────────────────────────
+    //Colours ────────────────────────────────────────────────────────────────
     private static final Color COL_SYSTEM  = new Color(0x888888);
     private static final Color COL_MY_MSG  = new Color(0x0F6E56);
     private static final Color COL_OTHER   = new Color(0x534AB7);
@@ -46,7 +47,7 @@ public class ChatClientGUI extends JFrame {
         askForUsername();
     }
 
-    // ── Build the Swing UI ─────────────────────────────────────────────────────
+    //Build the Swing UI ─────────────────────────────────────────────────────
     private void buildUI() {
         setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
         addWindowListener(new WindowAdapter() {
@@ -56,7 +57,7 @@ public class ChatClientGUI extends JFrame {
         setMinimumSize(new Dimension(500, 380));
         setLocationRelativeTo(null);
 
-        // ── Chat pane (non-editable, styled) ───────────────────────────────────
+        //Chat pane (non-editable, styled) ───────────────────────────────────
         chatPane = new JTextPane();
         chatPane.setEditable(false);
         chatPane.setBackground(COL_BG);
@@ -66,7 +67,7 @@ public class ChatClientGUI extends JFrame {
         JScrollPane chatScroll = new JScrollPane(chatPane);
         chatScroll.setBorder(BorderFactory.createEmptyBorder());
 
-        // ── Online users sidebar ───────────────────────────────────────────────
+        //Online users sidebar ───────────────────────────────────────────────
         userListModel = new DefaultListModel<>();
         JList<String> userList = new JList<>(userListModel);
         userList.setFont(new Font("Segoe UI", Font.PLAIN, 13));
@@ -86,7 +87,7 @@ public class ChatClientGUI extends JFrame {
         sidebar.add(onlineLabel, BorderLayout.NORTH);
         sidebar.add(new JScrollPane(userList), BorderLayout.CENTER);
 
-        // ── Input row ──────────────────────────────────────────────────────────
+        //Input row ──────────────────────────────────────────────────────────
         inputField = new JTextField();
         inputField.setFont(new Font("Segoe UI", Font.PLAIN, 14));
         inputField.setBorder(BorderFactory.createCompoundBorder(
@@ -127,13 +128,13 @@ public class ChatClientGUI extends JFrame {
         inputPanel.add(inputField, BorderLayout.CENTER);
         inputPanel.add(sendButton, BorderLayout.EAST);
 
-        // ── Status bar ─────────────────────────────────────────────────────────
+        //Status bar ─────────────────────────────────────────────────────────
         statusLabel = new JLabel("  Not connected");
         statusLabel.setFont(new Font("Segoe UI", Font.PLAIN, 12));
         statusLabel.setForeground(Color.GRAY);
         statusLabel.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
 
-        // ── Main layout ────────────────────────────────────────────────────────
+        //Main layout ────────────────────────────────────────────────────────
         JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, chatScroll, sidebar);
         splitPane.setResizeWeight(1.0);
         splitPane.setDividerSize(1);
@@ -148,7 +149,7 @@ public class ChatClientGUI extends JFrame {
         add(bottomPanel, BorderLayout.SOUTH);
     }
 
-    // ── File Transfer Logic (Control Plane) ────────────────────────────────────
+    //File Transfer Logic (Control Plane) ────────────────────────────────────
     private void initiateFileTransfer() {
         JFileChooser fileChooser = new JFileChooser();
         if (fileChooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
@@ -209,7 +210,7 @@ public class ChatClientGUI extends JFrame {
         }
     }
 
-    // ── Username dialog ────────────────────────────────────────────────────────
+    //Username dialog ────────────────────────────────────────────────────────
     private void askForUsername() {
         String name = JOptionPane.showInputDialog(
             this, "Enter your username:", "QuickChat", JOptionPane.PLAIN_MESSAGE
@@ -222,7 +223,7 @@ public class ChatClientGUI extends JFrame {
         connectToServer();
     }
 
-    // ── Connect to server ──────────────────────────────────────────────────────
+    //Connect to server ──────────────────────────────────────────────────────
     private void connectToServer() {
         try {
             socket = new Socket(HOST, PORT);
@@ -250,7 +251,7 @@ public class ChatClientGUI extends JFrame {
         }
     }
 
-    // ── Listener thread ────────────────────────────────────────────────────────
+    //Listener thread ────────────────────────────────────────────────────────
     private void listenFromServer() {
         try {
             String line;
@@ -265,7 +266,7 @@ public class ChatClientGUI extends JFrame {
         }
     }
 
-    // ── Route incoming message ─────────────────────────────────────────────────
+    //Route incoming message ─────────────────────────────────────────────────
     private void processIncoming(String msg) {
         // Intercept file offers
         if (msg.contains("[SYSTEM_FILE_OFFER]")) {
@@ -311,7 +312,7 @@ public class ChatClientGUI extends JFrame {
         }
     }
 
-    // ── Text Formatting ────────────────────────────────────────────────────────
+    //Text Formatting ────────────────────────────────────────────────────────
     private void appendChat(String line) {
         try {
             String timeStr = "";

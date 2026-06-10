@@ -10,6 +10,7 @@ import java.net.*;
  * • Main thread  → reads keyboard input and sends to server
  * • Listener thread → reads messages from server and prints them
  */
+
 public class ChatClient {
 
     private static final String HOST = "localhost";
@@ -28,7 +29,7 @@ public class ChatClient {
             establishConnection();
             System.out.println("Connected!\n");
 
-            // ── Main thread: keyboard → server ─────────────────────────────────
+            //Main thread: keyboard → server ─────────────────────────────────
             readFromKeyboard();
 
         } catch (IOException e) {
@@ -43,14 +44,14 @@ public class ChatClient {
         serverReader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
         serverWriter = new PrintWriter(new OutputStreamWriter(socket.getOutputStream()), true);
 
-        // ── Listener thread: server → console ──────────────────────────────
+        //Listener thread: server → console ──────────────────────────────
         Thread listenerThread = new Thread(this::listenFromServer);
         listenerThread.setDaemon(true);
         listenerThread.setName("ServerListener");
         listenerThread.start();
     }
 
-    // ── Runs on listener thread ─────────────────────────────────────────────────
+    //Runs on listener thread ─────────────────────────────────────────────────
     private void listenFromServer() {
         try {
             String line;
@@ -69,7 +70,7 @@ public class ChatClient {
         }
     }
 
-    // ── Reconnection Loop with Exponential Backoff ─────────────────────────────
+    //Reconnection Loop with Exponential Backoff ─────────────────────────────
     private void handleReconnect() {
         isReconnecting = true;
         
@@ -109,7 +110,7 @@ public class ChatClient {
         reconnectThread.start();
     }
 
-    // ── Runs on main thread ─────────────────────────────────────────────────────
+    //Runs on main thread ─────────────────────────────────────────────────────
     private void readFromKeyboard() {
         BufferedReader keyboard = new BufferedReader(new InputStreamReader(System.in));
         try {

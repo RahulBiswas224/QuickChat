@@ -9,13 +9,14 @@ import java.util.concurrent.*;
  * ChatServer — Week 4 update (Rooms / Channels added)
  * Added: ConcurrentHashMap for rooms and routing logic.
  */
+
 public class ChatServer {
 
     private static final int PORT = 5000;
 
     private final ConcurrentHashMap<String, ClientHandler> clients = new ConcurrentHashMap<>();
     
-    // ── NEW: Room Tracking ─────────────────────────────────────────────────────
+    //NEW: Room Tracking ─────────────────────────────────────────────────────
     private final ConcurrentHashMap<String, Set<ClientHandler>> rooms = new ConcurrentHashMap<>();
     
     private final ChatLogger logger = new ChatLogger(); // Week 3
@@ -49,7 +50,7 @@ public class ChatServer {
         }
     }
 
-    // ── Admin commands typed directly into server console ──────────────────────
+    //Admin commands typed directly into server console ──────────────────────
     private void adminCommandLoop() {
         BufferedReader console = new BufferedReader(new InputStreamReader(System.in));
         System.out.println("[ADMIN] Commands: /list  /kick <user>  /broadcast <msg>  /help");
@@ -91,7 +92,7 @@ public class ChatServer {
         }
     }
 
-    // ── NEW: Room Methods ──────────────────────────────────────────────────────
+    //NEW: Room Methods ──────────────────────────────────────────────────────
     private Set<ClientHandler> getRoom(String roomName) {
         return rooms.computeIfAbsent(roomName, k -> ConcurrentHashMap.newKeySet());
     }
@@ -124,7 +125,7 @@ public class ChatServer {
         }
     }
 
-    // ── Global Broadcast (Legacy) ──────────────────────────────────────────────
+    //Global Broadcast (Legacy) ──────────────────────────────────────────────
     public void broadcast(String message, String senderUsername) {
         String formatted = "[" + timestamp() + "] " + senderUsername + ": " + message;
         System.out.println(formatted);
@@ -134,7 +135,7 @@ public class ChatServer {
         }
     }
 
-    // ── Private message ────────────────────────────────────────────────────────
+    //Private message ────────────────────────────────────────────────────────
     public boolean sendPrivate(String targetUsername, String message, String senderUsername) {
         ClientHandler target = clients.get(targetUsername);
         if (target == null) return false;
@@ -151,7 +152,7 @@ public class ChatServer {
         return true;
     }
 
-    // ── Register / remove ──────────────────────────────────────────────────────
+    //Register / remove ──────────────────────────────────────────────────────
     public boolean registerClient(String username, ClientHandler handler) {
         if (clients.containsKey(username)) return false;
         clients.put(username, handler);
